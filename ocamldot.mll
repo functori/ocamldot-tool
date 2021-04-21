@@ -14,18 +14,45 @@ let addDepend t =
   if s<>t
   then dependencies := (s,t)::(!dependencies)
 
+(* In case several files with the same name are present in the
+   project, force a renaming to avoid clash *)
+let unique_name =
+  let renaming = Hashtbl.create 512 in
+  let counters = Hashtbl.create 512 in
+  fun filepath ->
+    let i = String.rindex filepath '.' in
+    let full = String.sub filepath 0 i in
+    try Hashtbl.find renaming full
+    with Not_found ->
+      let short = Filename.basename full in
+      let short = String.capitalize short in
+      let cpt, old_full =
+        try Hashtbl.find counters short
+        with Not_found ->
+          let cpt = ref (-1) in
+          Hashtbl.add counters short (cpt, full);
+          cpt, full
+      in
+      incr cpt;
+      let short =
+        if !cpt == 0 then short
+        else begin
+          let s = Format.sprintf "%s(%d)" short !cpt in
+          Format.eprintf
+            "Warning: module %s renamed to %s to avoid clash with %s !@."
+            full s old_full;
+          s
+        end
+      in
+      Hashtbl.add renaming full short;
+      short
 }
 
 rule processSource = parse
     ['.' '-' '/' 'A'-'Z' 'a'-'z' '_' '\192'-'\214' '\216'-'\246'
      '\248'-'\255' '\'' '0'-'9' ]+ '.' ['A'-'Z' 'a'-'z']+
     [' ' '\009']* ':'
-      { let s = Lexing.lexeme lexbuf in
-        let i = String.rindex s '.' in
-        let s = String.sub s 0 i in
-        let s = Filename.basename s in
-        let s = String.capitalize s in
-        currentSource := s;
+      { currentSource := unique_name (Lexing.lexeme lexbuf);
         processTargets lexbuf }
   | eof
       { () }
@@ -39,12 +66,7 @@ and processTargets = parse
       { processTargets lexbuf }
   | ['.' '/' 'A'-'Z' 'a'-'z' '_' '\192'-'\214' '\216'-'\246'
      '\248'-'\255' '\'' '0'-'9' ]+ '.' ['A'-'Z' 'a'-'z']+
-      { let t = Lexing.lexeme lexbuf in
-        let i = String.rindex t '.' in
-        let t = String.sub t 0 i in
-        let t = Filename.basename t in
-        let t = String.capitalize t in
-        addDepend t;
+      { addDepend (unique_name (Lexing.lexeme lexbuf));
         processTargets lexbuf }
   | eof
       { () }

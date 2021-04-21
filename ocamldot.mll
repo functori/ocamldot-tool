@@ -345,7 +345,7 @@ let printClusters clusterDirs dir_to_mod_names =
   StringMap.iter (fun dir mod_names ->
     let base = Filename.basename dir in
     if StringSet.mem base clusterDirs then (
-      Printf.printf "subgraph cluster_%s { label=\"%s\" ;\n" base base;
+      Printf.printf "subgraph cluster_%s { label=\"%s\" ; style=filled\n" base base;
       List.iter (fun mod_name ->
         Printf.printf "\"%s\" ;\n" mod_name
       ) mod_names ;

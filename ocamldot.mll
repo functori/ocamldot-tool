@@ -2,10 +2,10 @@
 
 {
 module StringSet =
-  Set.Make(struct type t = string let compare = compare end)
+  Set.Make(struct type t = string let compare = String.compare end)
 
 module StringMap =
-  Map.Make(struct type t = string let compare = compare end)
+  Map.Make(struct type t = string let compare = String.compare end)
 
 let dependencies = ref []
 let currentSource = ref ""

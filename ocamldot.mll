@@ -7,12 +7,16 @@ module StringSet =
 module StringMap =
   Map.Make(struct type t = string let compare = String.compare end)
 
+let exclude_paths = ref StringSet.empty
+
 let dependencies = ref []
-let currentSource = ref ""
+let currentSource = ref None
 let addDepend t =
-  let s = !currentSource in
-  if s<>t
-  then dependencies := (s,t)::(!dependencies)
+  match !currentSource, t with
+  | None, _ | _, None -> () (* ignored source or destination file *)
+  | Some s, Some t ->
+    if s<>t
+    then dependencies := (s,t)::(!dependencies)
 
 (* In case several files with the same name are present in the
    project, force a renaming to avoid clash *)
@@ -20,32 +24,37 @@ let unique_name =
   let renaming = Hashtbl.create 512 in
   let counters = Hashtbl.create 512 in
   fun filepath ->
-    let i = String.rindex filepath '.' in
-    let full = String.sub filepath 0 i in
-    try Hashtbl.find renaming full
-    with Not_found ->
-      let short = Filename.basename full in
-      let short = String.capitalize short in
-      let cpt, old_full =
-        try Hashtbl.find counters short
+    let dirname = Filename.dirname filepath in
+    if StringSet.mem dirname !exclude_paths then None
+    else
+      Some (
+        let i = String.rindex filepath '.' in
+        let full = String.sub filepath 0 i in
+        try Hashtbl.find renaming full
         with Not_found ->
-          let cpt = ref (-1) in
-          Hashtbl.add counters short (cpt, full);
-          cpt, full
-      in
-      incr cpt;
-      let short =
-        if !cpt == 0 then short
-        else begin
-          let s = Format.sprintf "%s(%d)" short !cpt in
-          Format.eprintf
-            "Warning: module %s renamed to %s to avoid clash with %s !@."
-            full s old_full;
-          s
-        end
-      in
-      Hashtbl.add renaming full short;
-      short
+          let short = Filename.basename full in
+          let short = String.capitalize short in
+          let cpt, old_full =
+            try Hashtbl.find counters short
+            with Not_found ->
+              let cpt = ref (-1) in
+              Hashtbl.add counters short (cpt, full);
+              cpt, full
+          in
+          incr cpt;
+          let short =
+            if !cpt == 0 then short
+            else begin
+              let s = Format.sprintf "%s(%d)" short !cpt in
+              Format.eprintf
+                "Warning: module %s renamed to %s to avoid clash with %s !@."
+                full s old_full;
+              s
+            end
+          in
+          Hashtbl.add renaming full short;
+          short
+      )
 }
 
 rule processSource = parse
@@ -391,6 +400,7 @@ let clusters = ref []
 let leftToRight = ref false
 let landscape = ref false
 let roots = ref []
+let input_file = ref ""
 ;;
 
 Arg.parse (Arg.align
@@ -409,9 +419,16 @@ Arg.parse (Arg.align
      " draw graph from left to right (default is top to bottom)");
     ("-r",
      Arg.String(fun s -> roots := s::!roots),
-     "<r> use <r> as a root in the graph; nodes reachable from <r> will be shown")
-  ])
-  getDependFromFile usage;
+     "<r> use <r> as a root in the graph; nodes reachable from <r> will be shown");
+    ("-e",
+     Arg.String(fun s ->
+         (* hack to normalize format of input dir *)
+         let s =
+           Format.sprintf "%s/%s" (Filename.dirname s) (Filename.basename s) in
+         exclude_paths := StringSet.add s !exclude_paths),
+     "<e> exclude/ignore the files of the given path")
+  ]) (fun f -> input_file := f) usage;
+getDependFromFile !input_file;
 if not(!calledOnFile) then getDependFromStdin();
 print_string "digraph G {\n";
 if !landscape

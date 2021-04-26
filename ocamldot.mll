@@ -438,9 +438,9 @@ if (!leftToRight) then print_string "  rankdir = LR ;\n"
 else print_string "  rankdir = TB ;\n";
 let graph = graphOfEdges(!dependencies) in
 begin
-  match !roots with
-    [] -> printDepend graph
-  | roots ->
+  match !roots, !clusters with
+    [], [] -> printDepend graph
+  | roots, _ -> (* execute this part if some clusters are given with -c *)
     (* Set up the graph so that the roots are printed at the same level *)
     print_string "  { rank=same ;\n";
     List.iter
@@ -451,19 +451,22 @@ begin
       roots;
     print_string "  };\n";
     (* Find the graph reachable from the roots *)
-    let tcGraph = tc graph in          
+    let tcGraph = tc graph in
     let reachable node =
       (List.exists (fun r -> r=node) roots)
       ||
       (List.exists (fun r -> isEdge tcGraph r node) roots) in
     let reachableFromRoots =
-      List.concat
-        (List.map
-           (fun (source,targets) ->
-             if reachable source
-             then [(source,targets)]
-             else [])
-           graph) in
+      if roots == [] then
+        graph
+      else
+        List.concat
+          (List.map
+             (fun (source,targets) ->
+                if reachable source (*|| roots == []*)
+                then [(source,targets)]
+                else [])
+             graph) in
     printDepend reachableFromRoots;
     let clusterDirs = List.fold_left (fun z s -> StringSet.add s z) StringSet.empty !clusters in
     colorAndCluster clusterDirs reachableFromRoots (Sys.getcwd ())
